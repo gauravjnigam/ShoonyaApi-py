@@ -2,12 +2,11 @@ from api_helper import ShoonyaApiPy, get_time
 import datetime
 import logging
 import time
-import yaml
-import pandas as pd
 import json
 import csv
 import threading
 import queue
+import yaml
 
 #sample
 logging.basicConfig(level=logging.DEBUG)
@@ -23,56 +22,72 @@ exch = ''
 token = ''
 trading_symbol = ''
 ltp = ''
-open = ''
+open_price = ''
 high = ''
 low = ''
 close = ''
-pc = ''
+tick_time = ''
 
-class Tick:
-    def __init__(self, exchange, token, ltp, pc, vol, open, high, low, close):
+class TickData:
+    def __init__(self, exchange, token, ltp, open_price, high, low, close, tick_time):
+        self.tick_time = tick_time
         self.exchange = exchange
         self.token = token
-        self.last_trade_price = ltp
-        self.pc = pc
-        self.vol = vol
-        self.open = open
+        self.ltp = ltp
+        # self.pc = pc
+        # self.vol = vol
+        self.open_price = open_price
         self.high = high
         self.low = low
         self.close = close
+        # print("creating tick object.. in init")
+
     def __str__(self):
-        strTick = "{0},{1},{2},{3},{4},{5},{6},{7},{8}".format(self.exchange, self.token, self.last_trade_price, self.pc, self.open, self.high, self.low, self.close)
+        strTick = "{0},{1},{2},{3},{4},{5},{6},{7}".format(self.tick_time, self.exchange, self.token, self.ltp, self.open_price, self.high, self.low, self.close)
         return strTick
 
 def prepare_tick_data(msg):
     msgType = msg['t']
     global exch
+    global token
+    global ltp
+    # global pc
+    # global vol
+    global open_price
+    global close
+    global high
+    global low
+    global tick_time
+    # print("Message type : ", msgType )
+    # print("Message : " + str(msg))
     if msgType == 'tk':
+        tick_time = str(int(time.time()))
         exch = msg['e']
-        token = msg['ts']
+        token = msg['tk']
         ltp = msg['lp']
-        open = msg['o']
-        high = msg['h']
-        low = msg['l']
-        close = msg['c']
-    elif msgType== 'tf':
-        if msg['lp']!='':
-            ltp = msg['lp']
-        elif msg['pc'] != '':
-            pc = msg['pc']
-        elif msg['o']!='':
-            open = msg['o']
-        elif msg['h']!='':
+        if 'o' in msg:
+            open_price = msg['o']
+        if 'h' in msg:
             high = msg['h']
-        # elif msg.has_key('c'):
-        #     close = msg['c']
-        # elif msg.has_key('l'):
-        #     low = msg['l']
+        if 'l' in msg:
+            low = msg['l']
+        if 'c' in msg:
+            close = msg['c']
+    elif msgType== 'tf':
+        if 'lp' in msg:
+            ltp = msg['lp']
+        if 'o' in msg:
+            open_price = msg['o']
+        if 'h' in msg:
+            high = msg['h']
+        if 'l' in msg:
+            low = msg['l']
+        if 'c' in msg:
+            close = msg['c']
 
-
-    tick = Tick(exchange=exch, token=token, ltp=ltp, pc=pc, 
-        vol=vol, open=open, high=high, low=low, close=close)
-    print("Tick data : ", tick)
+    # print("Creating tick object")
+    tick = TickData(exch, token, ltp, open_price, high, low, close, tick_time)
+    # print("Tick data : ", tick.__str__())
     return tick
     
 #application callbacks
@@ -93,42 +108,36 @@ def event_handler_quote_update(message):
     #ap  Average trade price
 
     print("quote event: {0}".format(time.strftime('%d-%m-%Y %H:%M:%S')) + str(message))
-    # tick = Tick(message.get)
-    tickData = prepare_tick_data(message)
-    ticksQ.put(tickData)
+    ticksQ.put(message)
+    # c = 100
+    # while c>0:
+    #     # print("Adding into queue...")
+    #     ticksQ.put(message)
+    #     c = c-1
+    #     time.sleep(1)
 
-
-def worker(file):
+def worker(fn):
     # open the file in the write mode
     
-    file_name = file + ".csv"
-    print ("FILE : " + file_name)
-    with open(file_name, 'a') as file:
-        
-    # create the csv writer
-    # writer = csv.writer(f)
-        #df = pd.DataFrame(dict)
+    file_name = fn + ".csv"
+    with open(file_name, "a") as f:
+        f.write("timestamp,Exchange,token,LTP,Open,High,Low,Close")
+        f.write("\n")
         count = 0
         while True:
             count = count + 1
-            writer = csv.writer(file)
             item = ticksQ.get()
-            my_list = item.split(",")
-            my_list.append("{0}".format(time.strftime('%d-%m-%Y %H:%M:%S')))
-            
-            # for i in item.values():
-            #     my_list.append(i)
-            # row = ",".join(my_list)
-            # print(str(my_list))
-            writer.writerow(my_list)
-            
-            # f.flush()
+            tickData = prepare_tick_data(item)
+            # print("##Queue item ", tickData.__str__())
+            f.write(tickData.__str__())
+            f.write("\n")
+
             ticksQ.task_done()
-            if count%60 == 0:
+            if count%10 == 0:
                 print("Flushing data to file")
                 count = 0
-                file.flush()
-        # file.close()
+                f.flush()
+        # f1.close()
 
 def open_callback():
     global socket_opened
@@ -136,8 +145,8 @@ def open_callback():
     print('app is connected')
     print("Exchange: ", exchange)
     print("Token: ", token)
-    print (file_name)
-    subscription = exchange+"|"+token
+    # print (file_name)
+    subscription = exchange+"|"+str(token)
     api.subscribe(subscription)
     # api.subscribe(['NSE|26009', 'NSE|26000'])
 
@@ -152,24 +161,24 @@ def get_time(time_string):
 api = ShoonyaApiPy()
 
 #use following if yaml isnt used
-user    = 'FA87226'
-pwd     = 'Goals@2022'
-factor2 = '072606'
-vc      = 'FA87226_U'
-apikey  = 'aa4cff2b3742cc0eeeea60d51e311722'
-imei    = 'abc1234'
-pin=input('Enter pin? ')
-ret = api.login(userid = user, password = pwd, twoFA=pin, vendor_code=vc, api_secret=apikey, imei=imei)
+# user    = 'FA87226'
+# pwd     = 'Goals@2022'
+# factor2 = '072606'
+# vc      = 'FA87226_U'
+# apikey  = 'aa4cff2b3742cc0eeeea60d51e311722'
+# imei    = 'abc1234'
+# pin=input('Enter pin? ')
+# ret = api.login(userid = user, password = pwd, twoFA=pin, vendor_code=vc, api_secret=apikey, imei=imei)
 
 #yaml for parameters
-# with open('cred.yml') as f:
-#     cred = yaml.load(f, Loader=yaml.FullLoader)
-#     print(cred)
+with open('cred.yml') as f:
+    cred = yaml.load(f, Loader=yaml.FullLoader)
+    print(cred)
 
-# pin=input('Enter pin? ')
-# ret = api.login(userid = cred['user'], password = cred['pwd'], twoFA=pin, vendor_code=cred['vc'], api_secret=cred['apikey'], imei=cred['imei'])
+pin=input('Enter pin? ')
+ret = api.login(userid = cred['user'], password = cred['pwd'], twoFA=pin, vendor_code=cred['vc'], api_secret=cred['apikey'], imei=cred['imei'])
 
-exchange=input('Exchange[NSE/BSE?NFO]? ')
+exchange="NSE"#input('Exchange[NSE/BSE?NFO]? ')
 
 
 if ret != None:   
@@ -259,18 +268,26 @@ if ret != None:
             if socket_opened == True:
                 print('websocket already opened')
                 continue
-            file = ''
+            file = 'bn_tick'
             dumpInput = input("dump to file[filepath/no] ?")
             if dumpInput != "no":
                 file = dumpInput + "_" + token
                 file_name = file
-                print ("#### "+file)
+                # print ("#### "+file)
             
             # Turn-on the worker thread.
-            threading.Thread(target=worker, args=(file,), daemon=True).start()
+            # threading.Thread(target=worker, daemon=True).start()
+            logging.info("Main    : before creating thread")
+            x = threading.Thread(target=worker, args=(file,), daemon=True)
+            logging.info("Main    : before running thread")
+            x.start()
+            logging.info("Main    : wait for the thread to finish")
+           
             
             ret = api.start_websocket(order_update_callback=event_handler_order_update, subscribe_callback=event_handler_quote_update, socket_open_callback=open_callback)
             print(" ===> ",ret)
+            # x.join()
+            logging.info("Main    : all done")
 
 
 
