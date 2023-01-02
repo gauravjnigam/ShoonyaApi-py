@@ -161,12 +161,12 @@ def get_time(time_string):
 api = ShoonyaApiPy()
 
 #use following if yaml isnt used
-# user    = 'FA87226'
-# pwd     = 'Goals@2022'
+# user    = '<>'
+# pwd     = '<>'
 # factor2 = '072606'
-# vc      = 'FA87226_U'
-# apikey  = 'aa4cff2b3742cc0eeeea60d51e311722'
-# imei    = 'abc1234'
+# vc      = '<>'
+# apikey  = '<>'
+# imei    = '<>'
 # pin=input('Enter pin? ')
 # ret = api.login(userid = user, password = pwd, twoFA=pin, vendor_code=vc, api_secret=apikey, imei=imei)
 
